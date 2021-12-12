@@ -1,0 +1,302 @@
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath,amssymb,amsthm}
+\usepackage{hyperref}
+
+\newcommand{\G}{\mathbb{G}}
+\newcommand{\F}{\mathbb{F}}
+
+\title{Zarcanum technical notes}
+\author{Cypher Stack\thanks{\url{https://cypherstack.com}}}
+\date{\today}
+
+\begin{document}
+	
+\maketitle
+
+This document describes technical information relevant to the Zarcanum \cite{zarcanum} preprint\footnote{Specifically, version \texttt{20211108:135703}.} and its underlying algorithms and cryptography.
+As with any review, it may be functionally incomplete, and may not reflect all errors or considerations that could arise with any particular implementation or application.
+The author asserts no warranty and disclaims liability for its use.
+The author further expresses no endorsement of the Zano project or its associated entities.
+
+
+\section{Introduction}
+
+Zarcanum is a set of protocols intended to enable staking operations in proof-of-stake blockchain assets that provide either amount confidentiality or, additionally, signer ambiguity.
+The preprint describes two instantiations of such a protocol: one is intended for use in cases where only amount confidentiality is required, and the other for cases where signer ambiguity is additionally necessary.
+
+The first Zarcanum protocol describes a method for staking a specified output.
+This approach provides amount confidentiality, where the staker asserts that the specified output meets the consensus-specified difficulty requirement without revealing its value.
+However, it does not provide source ambiguity; that is, the output being staked is explicitly specified in the staking operation.
+
+The second Zarcanum protocol describes a method that extends confidential staking to additionally provide source amgiguity.
+In this approach, a set of possible outputs is provided, and one output in the set is staked; amount confidentially is retained as well.
+
+
+\section{Observations and findings}
+
+In this section, we provide details on observations and findings from an analysis of the Zarcanum protocols.
+
+\subsection{Security model}
+
+The preprint describes confidential staking protocols that have complex interactions between cryptographic constructions and components, and for which parameter and design choices have nontrivial consequences.
+For example, Section D describes different mitigations against a trivial staking condition bypass; one requires a particular set of proofs, while the other relies on reasoning about blockchain history.
+As another example, Section E describes different mitigations against a brute-force attack by an adversarial sender; one requires careful selection of a scaling parameter in the staking condition, while the other uses a modification to the address and output formats.
+
+While the preprint describes the components, methods, and operations used in the staking operations, and provides arguments for the security of such methods, it does not introduce a formal security model.
+Instead, it provides a set of informal criteria and reasons against them.
+Because comprehensive security assertions and proofs require a security model against which to reason, it is not possible to make definitive conclusions in this manner.
+
+We strongly recommend extending the ideas and arguments in Zarcanum to a more comprehensive and formal security model, and then proving the security of the protocol and its components in this context.
+
+
+\subsection{Proposition A.1 and Lemma 1}
+
+We provide an alternate version of the results of Proposition A.1 and Lemma 1 from the preprint, as well as a proof that the resulting proving system is complete, special sound, and special honest-verifier zero knowledge.
+This formalizes the ideas in the preprint that require the prover knows discrete logarithm witness elements.
+These security properties may be useful for later integration within a broader formal protocol.
+
+Let $\G$ be a finite cyclic group where the discrete logarithm problem is hard, and let $\F$ be its scalar field.
+Let $0 \neq G,H \in \G$ be group elements with no efficiently-computable discrete logarithm relation.
+We assume that $\G,G,H$ are implicit public parameters where needed.
+
+Consider the relation
+$$\mathcal{R}_1 = \{A,A' \in \G ; f,a \in \F : A = aH + fG, A' = fH + aG\}$$
+and the following interactive protocol, which we will show is a sigma protocol for $\mathcal{R}_1$:
+\begin{enumerate}
+	\item The prover samples $r_0,r_1 \in \F$ uniformly at random.
+	\item The prover computes $R_0 = r_0 (H + G)$ and $R_1 = r_1 (H - G)$, and sends these values to the verifier.
+	\item The verifier samples nonzero $c \in \F$ uniformly at random, and sends this value to the prover.
+	\item The prover computes $y_0 = r_0 + c(a + f)$ and $y_1 = r_1 + c(a - f)$, and sends these values to the verifier.
+	\item The verifier accepts the proof if and only if the following hold:
+		\begin{alignat}{1}
+			y_0 (H + G) - c(A + A') &= R_0 \label{eqn:L1_1}\\
+			y_1 (H - G) - c(A - A') &= R_1 \label{eqn:L1_2}
+		\end{alignat}
+\end{enumerate}
+This protocol may be made non-interactive via the Fiat-Shamir technique, where the verifier challenge is replaced by a suitable transcript hash.
+This technique further allows for binding arbitrary proof context into the transcript.
+
+We show that this construction is complete, special sound, and special honest-verifier zero knowledge as a sigma protocol for the relation $\mathcal{R}_1$.
+
+\begin{proof}
+	Completeness follows trivially by inspection.
+
+	We next show that the protocol is $2$-special sound by a standard rewinding argument, where we define an extractor that produces valid witness elements on accepting transcripts using distinct verifier challenges.
+	Fix an initial transcript $(A,A',R_0,R_1)$, and let $c \neq c'$ be distinct verifier challenges for this transcript, with corresponding responses $(y_0,y_1)$ and $(y_0',y_1')$.
+	We apply Equations \ref{eqn:L1_1} and \ref{eqn:L1_2} to these transcripts to obtain
+	\begin{alignat*}{1}
+		(y_0 - y_0')(H + G) - (c - c')(A + A') &= 0 \\
+		(y_1 - y_1')(H - G) - (c - c')(A - A') &= 0
+	\end{alignat*}
+	and hence
+	\begin{alignat}{1}
+		\frac{y_0 - y_0'}{c - c'} (H + G) &= A + A'	\label{eqn:L1_alpha_0} \\	
+		\frac{y_1 - y_1'}{c - c'} (H - G) &= A - A'. \label{eqn:L1_alpha_1}
+	\end{alignat}
+	Define $\alpha_0 = (y_0 - y_0')/(c - c')$ and $\alpha_1 = (y_1 - y_1')/(c - c')$, and note that both are well defined since $c \neq c'$.
+	Adding and subtracting Equations \ref{eqn:L1_alpha_0} and \ref{eqn:L1_alpha_1}, we obtain the following expressions for $A$ and $A'$:
+	\begin{alignat*}{1}
+		A &= \frac{\alpha_0 + \alpha_1}{2} H + \frac{\alpha_0 - \alpha_1}{2} G \\
+		A' &= \frac{\alpha_0 - \alpha_1}{2} H + \frac{\alpha_0 + \alpha_1}{2} G
+	\end{alignat*}
+	Hence we define $$a = \frac{\alpha_0 + \alpha_1}{2}$$ and $$f = \frac{\alpha_0 - \alpha_1}{2}$$ as the extracted witnesses, and the protocol is $2$-special sound.
+	Observe that $a,f$ must be unique, or this implies a nontrivial discrete logarithm relationship between $G,H$.
+
+	We finally show that the protocol is special honest-verifier zero knowledge.
+	To do so, we define a simulator that, on a valid statement and uniformly-sampled verifier challenge, produces transcripts indistinguishable from those of real proofs.
+	Fix a valid prover statement $(A,A')$, and sample a nonzero challenge $c \in \F$.
+	The simulator samples random $y_0,y_1 \in \F$ and defines $R_0,R_1$ using Equations \ref{eqn:L1_1} and \ref{eqn:L1_2}, respectively.
+	The resulting simulated proof will be accepted by an honest verifier.
+	Because $G,H$ are independent generators, such a simulated proof is distributed identically to a real proof, and hence the protocol is special honest-verifier zero knowledge.
+
+	This completes the proof.
+\end{proof}
+
+
+\subsection{Lemma 2}
+\label{obs:lemma2}
+
+We provide an alternate version of the result of Lemma 2 from the preprint, as well as a proof that the resulting proving system is complete, special sound, and special honest-verifier zero knowledge.
+This formalizes the ideas in the preprint that require the prover knows discrete logarithm witness elements.
+These security properties may be useful for later integration within a broader formal protocol.
+
+Let $\G$ be a finite cyclic group where the discrete logarithm problem is hard, and let $\F$ be its scalar field.
+Let $0 \neq G,H,X \in \G$ be group elements with no efficiently-computable discrete logarithm relation.
+We assume that $\G,G,H,X$ are implicit public parameters where needed.
+
+Consider the relation
+$$\mathcal{R}_2 = \{C,C' \in \G ; f,a,x,x' \in \F : C = aH + fG + xX, C' = fH + aG + x'X\}$$
+and the following interactive protocol, which we will show is a sigma protocol for $\mathcal{R}_2$:
+\begin{enumerate}
+	\item The prover samples $r_0,r_1,s_0,s_1 \in \F$ uniformly at random.
+	\item The prover computes $R_0 = r_0 (H + G) + s_0 X$ and $R_1 = r_1 (H - G) + s_1 X$, and sends these values to the verifier.
+	\item The verifier samples nonzero $c \in \F$ uniformly at random, and sends this value to the prover.
+	\item The prover computes and sends these values to the verifier:
+		\begin{alignat*}{1}
+			y_0 &= r_0 + c(a + f) \\
+			y_1 &= r_1 + c(a - f) \\
+			z_0 &= s_0 + c(x + x') \\
+			z_1 &= s_1 + c(x - x')
+		\end{alignat*}
+	\item The verifier accepts the proof if and only if the following hold:
+		\begin{alignat}{1}
+			y_0 (H + G) + z_0 X - c(C + C') &= R_0 \label{eqn:L2_1}\\
+			y_1 (H - G) + z_1 X - c(C - C') &= R_1 \label{eqn:L2_2}
+		\end{alignat}
+\end{enumerate}
+This protocol may be made non-interactive via the Fiat-Shamir technique, where the verifier challenge is replaced by a suitable transcript hash.
+This technique further allows for binding arbitrary proof context into the transcript.
+
+We show that this construction is complete, special sound, and special honest-verifier zero knowledge as a sigma protocol for the relation $\mathcal{R}_2$.
+
+\begin{proof}
+	Completeness follows trivially by inspection.
+
+	We next show that the protocol is $2$-special sound by a standard rewinding argument, where we define an extractor that produces valid witness elements on accepting transcripts using distinct verifier challenges.
+	Fix an initial transcript $(C,C',R_0,R_1)$, and let $c \neq c'$ be distinct verifier challenges for this transcript, with corresponding responses $(y_0,y_1,z_0,z_1)$ and $(y_0',y_1',z_0',z_1')$.
+	We apply Equations \ref{eqn:L2_1} and \ref{eqn:L2_2} to these transcripts to obtain
+	\begin{alignat*}{1}
+		(y_0 - y_0')(H + G) + (z_0 - z_0')X - (c - c')(C + C') &= 0 \\
+		(y_1 - y_1')(H - G) + (z_1 - z_1')X - (c - c')(C - C') &= 0
+	\end{alignat*}
+	and hence
+	\begin{alignat}{1}
+		\frac{y_0 - y_0'}{c - c'} (H + G) + \frac{z_0 - z_0'}{c - c'} X &= C + C'	\label{eqn:A1_alpha_0} \\	
+		\frac{y_1 - y_1'}{c - c'} (H - G) + \frac{z_1 - z_1'}{c - c'} X &= C - C'. \label{eqn:A1_alpha_1}
+	\end{alignat}
+	Define the following:
+	\begin{alignat*}{1}
+		\alpha_0 &= \frac{y_0 - y_0'}{c - c'} \\
+		\alpha_1 &= \frac{y_1 - y_1'}{c - c'} \\
+		\beta_0 &= \frac{z_0 - z_0'}{c - c'} \\
+		\beta_1 &= \frac{z_1 - z_1'}{c - c'}
+	\end{alignat*}
+	Note that all are well defined since $c \neq c'$.
+	Adding and subtracting Equations \ref{eqn:A1_alpha_0} and \ref{eqn:A1_alpha_1}, we obtain the following expressions for $C$ and $C'$:
+	\begin{alignat*}{1}
+		C &= \frac{\alpha_0 + \alpha_1}{2} H + \frac{\alpha_0 - \alpha_1}{2} G + \frac{\beta_0 + \beta_1}{2} X \\
+		C' &= \frac{\alpha_0 - \alpha_1}{2} H + \frac{\alpha_0 + \alpha_1}{2} G + \frac{\beta_0 - \beta_1}{2} X
+	\end{alignat*}
+	Hence we define
+	\begin{alignat*}{1}
+		a &= \frac{\alpha_0 + \alpha_1}{2} \\
+		f &= \frac{\alpha_0 - \alpha_1}{2} \\
+		x &= \frac{\beta_0 + \beta_1}{2} \\
+		x' &= \frac{\beta_0 - \beta_1}{2}
+	\end{alignat*}
+	as the extracted witnesses, and the protocol is $2$-special sound.
+	Observe that $a,f,x,x'$ must be unique, or this implies a nontrivial discrete logarithm relationship between $G,H,X$.
+
+	We finally show that the protocol is special honest-verifier zero knowledge.
+	To do so, we define a simulator that, on a valid statement and uniformly-sampled verifier challenge, produces transcripts indistinguishable from those of real proofs.
+	Fix a valid prover statement $(C,C')$, and sample a nonzero challenge $c \in \F$.
+	The simulator samples random $y_0,y_1,z_0,z_1 \in \F$ and defines $R_0,R_1$ using Equations \ref{eqn:L2_1} and \ref{eqn:L2_2}, respectively.
+	The resulting simulated proof will be accepted by an honest verifier.
+	Because $G,H,X$ are independent generators, such a simulated proof is distributed identically to a real proof, and hence the protocol is special honest-verifier zero knowledge.
+
+	This completes the proof.
+\end{proof}
+
+
+\subsection{Ring signature extension}
+
+Section 6.1 of the preprint describes a method to extend MLSAG \cite{ringct} signature dimensionality to account for the addition of an ``extended commitment'' $C$ to the same amount as a standard output commitment $A$ and group element $Q$, such that a prover knows some $x \in \F$ such that $C - A - Q = xX$ for a fixed global generator $X \in \G$, and also knows some $q \in \F$ such that $Q = qG$ for a fixed global generator $G \in \G$.
+Further, this proof must be ambiguous in the sense that each tuple $(A, Q)$ is contained within a larger cover set.
+
+We note that MLSAG signatures are not proofs of knowledge in the sense that their construction does not appear to readily admit an extractor for the required discrete logarithm witnesses.
+However, their use in confidential transaction protocols admits useful security properties relating to multidimensional linkable ring signatures for linkability, anonymity, unforgeability, and the like.
+While the MLSAG extension described here would seem to inherit these properties, it is not immediately clear if they are sufficient for the broader Zarcanum protocol, or if a later formal security model would require other properties provided by zero-knowledge proofs of knowledge.
+
+Should a broader protocol's security model require that this modified construction be a zero-knowledge proof of knowledge or otherwise require properties like special soundness or special honest-verifier zero knowledge, it is possible to use other constructions like Triptych \cite{triptych} that provide the same multidimensional linkable ring signature functionality.
+However, this comes at the cost of a linking tag definition that differs from the linear key image construction used in MLSAG-based protocols, and may not be suitable for this reason.
+
+Additionally, the use of MLSAG linkable ring signatures in the protocol for staking and spend operations requires careful consideration to ensure that source information is not linked between a staking operation and a later spend.
+Existing security models for linkable (and multidimensional linkable) ring signature constructions like MLSAG or CLSAG \cite{clsag} do not specifically address the situation where related signature algorithms (using, in this case, different dimensionality) are used concurrently within a broader protocol.
+The use of a suitable zero-knowledge proof of knowledge instead of a witness-indistinguishable construction is likely to minimize this type of risk.
+
+
+\subsection{Range proof extension}
+\label{obs:range}
+
+Section 5.1 of the preprint discusses ways to show that a double-blinded Pedersen commitment is to a value in the range $[0,2^n)$ for some fixed natural number $n$.
+It mentions one method is to extend a range proving system like Bulletproofs \cite{bp} or Bulletproofs+ \cite{bp_plus} to account for the added blinding factor.
+
+We note that such an extension for Bulletproofs is straightforward, and is described in a version of the preprint for the Lelantus \cite{lelantus} transaction protocol.
+It is likely possible to produce such an extension for the more efficient Bulletproofs+ protocol, but we do not know of any work that has yet done so.
+
+
+\subsection{Linear composition proof}
+
+Section A.2 of the preprint describes a ``linear composition proof'' intended to show the existence of a representation of a given group element with respect to two specific generators.
+This proof is used in several places within the Zarcanum protocol:
+\begin{enumerate}
+	\item\label{item:mirror} To prove (in step 5 of Section 6.2) that $C$ and $C'$ are mirror commitments.
+	\item\label{item:range} To prove (in step 8 of Section 6.2) the validity of the relationship between $E$ and $B$.
+	\item To prove (in Section 6.1) the validity of the relationship between $W$ and $C$.
+	\item To prove (in Section D.1) that $f + q \neq 0$.
+\end{enumerate}
+
+The use of the alternate version of Lemma 2 presented in Observation \ref{obs:lemma2} removes the need for a linear composition proof in item \ref{item:mirror} above.
+Further, we note in Observation \ref{obs:range} that the Bulletproofs range proving system (and likely the Bulletproofs+ range proving system) can be used directly with double-blinded commitments, which would remove the need for a linear composition proof in item \ref{item:mirror}.
+
+The presentation of the proof in Section A.2 is somewhat informal.
+No conditions are placed on the generators $A,B$ that may be needed for the use cases listed; for example, it may be required that the generators have no efficiently-computable discrete logarithm relationship in order to extract unique witnesses from successful verification.
+Further, the given protocol states that successful verification convinces the verifier that a representation of $C$ with respect to the generators $A,B$ exists, but makes no particular claim that the prover knows this representation.
+Indeed, since $\G$ is cyclic, such a representation exists for every $C \in \G$.
+
+It may be preferable to define the linear composition proving system more formally, such that it is a zero-knowledge proof of knowledge, and that the resulting representation is unique (for a computationally-bound prover).
+Computational uniqueness of the representation, as well as being zero knowledge, requires in particular that $A,B$ have no efficiently-computable discrete logarithm relationship; fortunately, this requirement is satisfied by the generators used in the required use cases.
+Note that soundness does not require this constraint.
+The proving system may be modified slightly to accommodate a straightforward security proof, which we describe here for completeness.
+
+Let $\G$ be a finite cyclic group where the discrete logarithm problem is hard, and let $\F$ be its scalar field.
+Let $0 \neq A,B \in \G$ be group elements with no efficiently-computable discrete logarithm relation.
+We assume that $\G,A,B$ are implicit public parameters where needed.
+
+Consider the relation
+$$\mathcal{R}_3 = \{C \in \G; a,b \in \F : C = aA + bB\}$$
+and the following interactive protocol, which is a sigma protocol for $\mathcal{R}_3$:
+\begin{enumerate}
+	\item The prover samples $r_0, r_1 \in \F$ uniformly at random.
+	\item The prover computes $R = r_0 A + r_1 B$, and sends this value to the verifier.
+	\item The verifier samples nonzero $c \in \F$ uniformly at random, and sends this value to the prover.
+	\item The prover computes $y_0 = r_0 + ca$ and $y_1 = r_1 + cb$, and sends these values to the verifier.
+	\item The verifier accepts the proof if and only if
+	\begin{equation}
+		\label{eqn:representation}
+		y_0 A + y_1 B - cC = R.
+	\end{equation}
+\end{enumerate}
+This protocol may be made non-interactive via the Fiat-Shamir technique, where the verifier challenge is replaced by a suitable transcript hash.
+This technique further allows for binding arbitrary proof context into the transcript.
+
+We show that this construction is complete, special sound, and special honest-verifier zero knowledge as a sigma protocol for the relation $\mathcal{R}_3$.
+
+\begin{proof}
+	Completeness follows trivially by inspection.
+
+	We next show that the protocol is $2$-special sound by a standard rewinding argument, where we define an extractor that produces valid witness elements on accepting transcript using distinct verifier challenges.
+	Fix an initial transcript $(C,R)$, and let $c \neq c'$ be distinct verifier challenges for this transcript, with corresponding responses $(y_0, y_1)$ and $(y_0', y_1')$.
+	We apply Equation \ref{eqn:representation} to these transcripts to obtain
+	$$(y_0 - y_0')A + (y_1 - y_1')B - (c - c')C = 0$$
+	and hence
+	$$\frac{y_0 - y_0'}{c - c'} A + \frac{y_1 - y_1'}{c - c'} B = C.$$
+	Define $$a = \frac{y_0 - y_0'}{c - c'}$$ and $$b = \frac{y_1 - y_1'}{c - c'}$$ as the extracted witnesses, which are well defined since $c \neq c'$, and the protocol is $2$-special sound.
+	Observe that $a,b$ must be unique, or this implies a nontrivial discrete logarithm relationship between $A,B$.
+
+	We finally show that the protocol is special honest-verifier zero knowledge.
+	To do so, we define a simulator that, on a valid statement and uniformly-sampled verifier challenge, produces transcripts indistinguishable from those of real proofs.
+	Fix a valid prover statement $C$, and sample a nonzero challenge $c \in \F$.
+	The simulator samples random $y_0,y_1 \in \F$ and defines $R$ using Equation \ref{eqn:representation},
+	The resulting simulated proof will be accepted by an honest verifier.
+	Because $A,B$ are independent generators, such a simulated proof is distributed identically to a real proof, and hence the protocol is special honest-verifier zero knowledge.
+
+	This completes the proof.
+\end{proof}
+
+
+\bibliographystyle{plain}
+\bibliography{main}
+
+\end{document}
